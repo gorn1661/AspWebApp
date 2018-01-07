@@ -14,5 +14,10 @@ namespace bankWebApi.Controllers
         public ClientsController(IBankDataProvider bProvider){
             _bProvider = bProvider;
         }
+
+        [HttpGet("getClients")]
+        public IEnumerable<ClientModel> getClients(){
+            return _bProvider.getAllClients().Result;
+        }
     }
 }

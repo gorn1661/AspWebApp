@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using bankWebApi.Services.Contexts;
 using bankWebApi.Services.Implements;
 using bankWebApi.Services.Interfaces;
+using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.EntityFrameworkCore;
@@ -35,6 +36,7 @@ namespace bankwebapi
                 );
             });
             services.AddScoped<IBankDataProvider, BankDataProvider>();
+            services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme).AddCookie();
         }
 
         // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
@@ -44,8 +46,18 @@ namespace bankwebapi
             {
                 app.UseDeveloperExceptionPage();
             }
+            app.UseAuthentication();
 
-            app.UseMvc();
+            app.UseStaticFiles();
+
+            app.UseMvc(routes => {
+                routes.MapRoute(
+                    name: "default",
+                    template: "{controller=Account}/{action=LogIn}/{id?}"
+                );
+            });
+
+            app.UseMvcWithDefaultRoute();
         }
     }
 }

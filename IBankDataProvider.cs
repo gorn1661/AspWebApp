@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Security.Claims;
 using System.Threading.Tasks;
 using bankWebApi.Services.DatabaseModels;
 using Microsoft.AspNetCore.Mvc;
@@ -8,9 +9,8 @@ namespace bankWebApi.Services.Interfaces
     public interface IBankDataProvider
     {
     #region account
-        Task<bool> EmployeeSignIn(string login, string password);
-        Task<bool> ClientSignIn(string login, string password);
-        Task SignOut();
+        ClaimsPrincipal EmployeeSignIn(string login, string password);
+        ClaimsPrincipal ClientSignIn(string login, string password);
     #endregion
     #region application
         Task<Dictionary<string, int>> ExchangeRate();
@@ -24,7 +24,7 @@ namespace bankWebApi.Services.Interfaces
         Task<bool> ChangePassword(string role, int userId, string oldPassword, string newPassword);
     #endregion
     #region client
-        Task<bool> AddClient(string firstName, string lastName, string email, int phoneNumber);
+        Task<bool> AddClient(string firstName, string lastName, string email, string phoneNumber);
         Task<bool> RemoveClient(int clientId);
         Task<ClientModel> GetClient(int clientId);
         Task<ClientAccountModel> GetClientAccount(string clientAccountNumber);
@@ -36,6 +36,7 @@ namespace bankWebApi.Services.Interfaces
         Task<List<ClientModel>> createClientsRandomly();
         Task<List<ClientAccountModel>> createClientAccountsRandomly();
         Task<List<ClientModel>> getAllClients();
+        Task<List<ClientAccountModel>> getAllClientsAccount();
     #endregion
     #region transaction
         Task<bool> Transfer(string senderAccountNumber, string recipientAccountNumber, int amount);

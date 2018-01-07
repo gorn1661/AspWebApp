@@ -9,6 +9,7 @@ using bankWebApi.Services.Enums;
 using System;
 using System.Security.Cryptography;
 using System.Text;
+using System.Security.Claims;
 
 namespace bankWebApi.Services.Implements
 {
@@ -34,17 +35,35 @@ namespace bankWebApi.Services.Implements
     }
 
     #region account
-        public Task<bool> EmployeeSignIn(string login, string password)
+        public ClaimsPrincipal EmployeeSignIn(string login, string password)
         {
-            throw new NotImplementedException();
+            var claims = new List<Claim>{
+                new Claim(ClaimTypes.Name, login),
+                new Claim(ClaimTypes.Role, "employee")
+            };
+
+            var claimsIdentity = new ClaimsIdentity(
+                claims
+            );
+
+
+            var claimsPrincipal = new ClaimsPrincipal(claimsIdentity);
+            return claimsPrincipal;
         }
-        public Task<bool> ClientSignIn(string login, string password)
+        public ClaimsPrincipal ClientSignIn(string login, string password)
         {
-            throw new NotImplementedException();
-        }
-        public Task SignOut()
-        {
-            throw new NotImplementedException();
+            var claims = new List<Claim>{
+                new Claim(ClaimTypes.Name, login),
+                new Claim(ClaimTypes.Role, "client")
+            };
+
+            var claimsIdentity = new ClaimsIdentity(
+                claims
+            );
+
+            var claimsPrincipal = new ClaimsPrincipal(claimsIdentity);
+
+            return claimsPrincipal;
         }
     #endregion
 
@@ -63,13 +82,70 @@ namespace bankWebApi.Services.Implements
                         .Select(d => d)
                         .FirstOrDefaultAsync();
         }
-         public Task<bool> AddClient(string firstName, string lastName, string email, int phoneNumber)
+        public async Task<bool> AddClient(string firstName, string lastName, string email, string phoneNumber)
         {
-            throw new NotImplementedException();
+            Random r = new Random();
+            ClientModel clientModel = new ClientModel(){
+                Id = await _bContext.ClientModel.AsNoTracking()
+                    .Select(d => d.Id)
+                    .LastAsync() + 1,
+                FirstName = firstName,
+                LastName = lastName,
+                Login = firstName + lastName + r.Next(10,99),
+                PhoneNumber = phoneNumber,
+                ConfirmedPhoneNumber = true, 
+                Email = email,
+                ConfirmedEmail = true,
+                PasswordHash = Hash("1234aA!")
+            };
+
+            StringBuilder accountNumber = new StringBuilder();
+            for(int i = 0; i < 18; i++){
+                accountNumber.Append(r.Next(0,9));
+            }
+
+            ClientAccountModel clientAccount = new ClientAccountModel(){
+                Id = await _bContext.ClientAccountModel.AsNoTracking()
+                    .Select(d => d.Id)
+                    .LastAsync() + 1,
+                ClientId = clientModel.Id,
+                AccountNumber = accountNumber.ToString(),
+                Money = 0,
+                IsActive = true
+            }; 
+
+            await _bContext.AddAsync(clientModel);
+            await _bContext.AddAsync(clientAccount);
+            if(await _bContext.SaveChangesAsync() == 1)
+                return true;
+            return false;
         }
-        public Task<bool> RemoveClient(int clientId)
+        public async Task<bool> RemoveClient(int clientId)
         {
-            throw new NotImplementedException();
+            ClientModel clientModel = new ClientModel();
+            ClientAccountModel accountModel = new ClientAccountModel();
+            clientModel = await _bContext.ClientModel.AsNoTracking()
+                                .Where(d => d.Id == clientId)
+                                .Select(d => d)
+                                .FirstOrDefaultAsync();
+            accountModel = await _bContext.ClientAccountModel.AsNoTracking()
+                                .Where(d => d.ClientId == clientId)
+                                .Select(d => d)
+                                .FirstOrDefaultAsync();
+
+            clientModel.Login = null;
+            clientModel.Email = null;
+            clientModel.PhoneNumber = null;
+            clientModel.PasswordHash = null;
+            clientModel.ConfirmedEmail = false;
+            clientModel.ConfirmedPhoneNumber = false;
+            accountModel.IsActive = false;
+
+            await _bContext.AddAsync(clientModel);
+            await _bContext.AddAsync(accountModel);
+            if(await _bContext.SaveChangesAsync() == 1)
+                return true;
+            return false;
         }
         public async Task<ClientAccountModel> GetClientAccount(string clientAccountNumber)
         {
@@ -285,30 +361,101 @@ namespace bankWebApi.Services.Implements
         public async Task<List<ClientModel>> getAllClients()
         {
             return await _bContext.ClientModel.AsNoTracking()
-                        .Where(d => d.Id > 0 && d.Id < 10)
                         .Select(d => d)
                         .ToListAsync();
         }
-        public Task<List<ClientAccountModel>> createClientAccountsRandomly()
+        public async Task<List<ClientAccountModel>> createClientAccountsRandomly()
         {
-            throw new NotImplementedException();
+            Random r = new Random();
+            List<ClientAccountModel> clientAccounts = new List<ClientAccountModel>();
+            for(int i = 1; i <= 10; i++)
+            {
+                StringBuilder accountNumber = new StringBuilder();
+                for(int j = 0; j < 18; j++)
+                {
+                    accountNumber.Append(r.Next(0, 9).ToString());
+                }
+                int money = r.Next(100, 300000);
+
+                clientAccounts.Add(new ClientAccountModel(){
+                    Id = i,
+                    ClientId = i,
+                    AccountNumber = accountNumber.ToString(),
+                    Money = money,
+                    IsActive = true
+                });
+            }
+            await _bContext.ClientAccountModel.AddRangeAsync(clientAccounts);
+            await _bContext.SaveChangesAsync();
+            return clientAccounts;
+        }
+
+        public async Task<List<ClientAccountModel>> getAllClientsAccount()
+        {
+            return await _bContext.ClientAccountModel.AsNoTracking()
+                    .Select(d => d)
+                    .ToListAsync();
         }
         #endregion
 
     #region transaction
-        public Task<bool> Transfer(string senderAccountNumber, string recipientAccountNumber, int amount)
+        public async Task<bool> Transfer(string senderAccountNumber, string recipientAccountNumber, int amount)
         {
-            throw new NotImplementedException();
+            ClientAccountModel sender = await _bContext.ClientAccountModel.AsNoTracking()
+                        .Where(d => d.AccountNumber == senderAccountNumber)
+                        .Select(d => d)
+                        .FirstOrDefaultAsync();
+            ClientAccountModel recipient = await _bContext.ClientAccountModel.AsNoTracking()
+                        .Where(d => d.AccountNumber == recipientAccountNumber)
+                        .Select(d => d)
+                        .FirstOrDefaultAsync();
+
+            if(sender.Money - amount > 0){
+                sender.Money -= amount;
+                recipient.Money += amount;
+            }else{
+                return false;
+            }
+
+            await _bContext.AddAsync(sender);
+            await _bContext.AddAsync(recipient);
+            if(await _bContext.SaveChangesAsync() == 1)
+                return true;
+            return false;
         }
 
-        public Task<bool> Payment(string clientAccountNumber, int amount)
+        public async Task<bool> Payment(string clientAccountNumber, int amount)
         {
-            throw new NotImplementedException();
+            ClientAccountModel money = await _bContext.ClientAccountModel.AsNoTracking()
+                        .Where(d => d.AccountNumber == clientAccountNumber)
+                        .Select(d => d)
+                        .FirstOrDefaultAsync();
+
+            money.Money += amount;
+
+            await _bContext.AddAsync(money);
+            if(await _bContext.SaveChangesAsync() == 1)
+                return true;
+            return false;
         }
 
-        public Task<bool> Withdrawal(string clientAccountNumber, int amount)
+        public async Task<bool> Withdrawal(string clientAccountNumber, int amount)
         {
-            throw new NotImplementedException();
+            ClientAccountModel money = await _bContext.ClientAccountModel.AsNoTracking()
+                        .Where(d => d.AccountNumber == clientAccountNumber)
+                        .Select(d => d)
+                        .FirstOrDefaultAsync();
+
+            if(money.Money - amount > 0){
+                money.Money -= amount;
+            }else{
+                return false;
+            }
+
+            await _bContext.AddAsync(money);
+            if(await _bContext.SaveChangesAsync() == 1)
+                return true;
+            return false;
         }
         #endregion
     }
